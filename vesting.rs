@@ -1,5 +1,5 @@
 
-use core::ops::Add;
+use core::ops::{Add, Sub, Mul, Div};
 
 use alloc::{
     string::{String, ToString},
@@ -11,7 +11,7 @@ use alloc::{
 use crate::{
     error::Error,
     interfaces::cep18::CEP18,
-    utils::{get_current_address, get_key, self}, events::VestingEvent,
+    utils::{get_current_address, get_key, self , read_from}, events::VestingEvent,
     events::emit, enums::Address
 };
 
@@ -40,7 +40,6 @@ const ALLOCATIONS: &str = "allocations";
 const RECIPIENT: &str = "recipient";
 const CLAIM_AMOUNT: &str = "claim_amount";
 const CLIFF_TIMESTAMP: &str = "cliff_timestamp";
-const CLIFF_AMOUNT: &str = "cliff_amount";
 const RELEASE_DATE : &str = "release_date";
 const END_DATE : &str = "end_date";
 const INDEX : &str = "index";
@@ -50,8 +49,9 @@ const ENTRY_POINT_CLAIM: &str = "claim";
 const ENTRY_POINT_INIT: &str = "init";
 
 // dicts
-const ALLOCATION: &str = "allocation";
-const CLAIMED: &str = "claimed";
+const RECIPIENTS_DICT: &str = "recipients_dict";
+const ALLOCATIONS_DICT: &str = "allocations_dict";
+const CLAIMED_DICT: &str = "claimed_dict";
 
 // #[derive(Clone, Copy, Debug, CLTyped, ToBytes, FromBytes)]
 // pub struct Vest {
@@ -63,55 +63,46 @@ const CLAIMED: &str = "claimed";
 
 #[no_mangle]
 pub extern "C" fn claim() {
-    // utils
-    let now : u64 = runtime::get_blocktime().into();
-    let caller = runtime::get_caller();
-
-    // contract
+    // arguements
     let cep18_contract_hash = runtime::get_named_arg::<Key>(CEP18_CONTRACT_HASH)
     .into_hash()
     .map(ContractHash::new)
     .unwrap();
+    let index: i32 = runtime::get_named_arg(INDEX);
 
-    // params temp
-    let recipient : Key = runtime::get_named_arg(RECIPIENT);
-    let claim_amount : U256 = runtime::get_named_arg(CLAIM_AMOUNT);
+    let recipients_dict = *runtime::get_key(RECIPIENTS_DICT).unwrap().as_uref().unwrap();
+    let allocations_dict = *runtime::get_key(ALLOCATIONS_DICT).unwrap().as_uref().unwrap();
+    let claimed_dict = *runtime::get_key(ALLOCATIONS_DICT).unwrap().as_uref().unwrap();
 
-    // date's
-    let start_date : u64 =  utils::read_from(START_DATE);
-    let duration : u64 =  utils::read_from(DURATION);
-    let release_date : u64 = utils::read_from(RELEASE_DATE);
-    let end_date: u64 = utils::read_from(END_DATE);
+    let recipient =  storage::dictionary_get::<Key>(recipients_dict, &index.to_string()).unwrap().unwrap();
+    let allocation =  storage::dictionary_get::<U256>(allocations_dict, &index.to_string()).unwrap().unwrap();
+    let claimed =  storage::dictionary_get::<U256>(claimed_dict, &index.to_string()).unwrap().unwrap();
+
+    // dates
+    let start_date :u64 = utils::read_from(START_DATE);
+    let release_date :u64 = utils::read_from(RELEASE_DATE);
+    let end_date :u64 = utils::read_from(END_DATE);
+    let duration :u64 = utils::read_from(DURATION);
+
+    // utils
+    let caller = runtime::get_caller();
+    let now : u64 = runtime::get_blocktime().into();
 
     // dicts
-    let recipients: Vec<Key> = utils::read_from(RECIPIENTS);
-    let allocations: Vec<U256> = utils::read_from(ALLOCATIONS);
-
-    // amounts
-    let vesting_amount : U256 = runtime::get_named_arg(VESTING_AMOUNT);
-    let cliff_amount : U256 = runtime::get_named_arg(CLIFF_AMOUNT);
-
-    // let index : i32 = runtime::get_named_arg(INDEX);
-    let index : i32 = 1;
-
-    let d = allocations[index];
-    let f = Some(d);
-    // let current_recipient = recipients.get(index).into();
-    let allocation  = allocations.get(index);
-
-
-    if isExist < 0 {
-        runtime::revert(Error::FatalError)
-    }
+    let start_date :u64 = utils::read_from(START_DATE);
+    let release_date :u64 = utils::read_from(RELEASE_DATE);
 
     let cep18 = CEP18::new(cep18_contract_hash);
-    cep18.transfer(recipient, claim_amount);
+   
+    let calculated_amount = allocation.mul(now.sub(start_date)).div(duration);
+    let remaining_amount = calculated_amount.sub(claimed);
 
-    let claim_dict = *runtime::get_key(CLAIMED).unwrap().as_uref().unwrap();
+    cep18.transfer(recipient, remaining_amount);
 
-    storage::dictionary_put(claim_dict, &isExist.to_string(), claim_amount);
+    storage::dictionary_put(claimed_dict, &index.to_string(), calculated_amount);  
 
-    emit(&VestingEvent::Claim { cep18_contract_hash,recipient, claim_amount });
+
+    emit(&VestingEvent::Claim { cep18_contract_hash,recipient, claim_amount : remaining_amount });
 }
 
 #[no_mangle]
@@ -130,12 +121,13 @@ pub extern "C" fn init() {
     let allocations : Vec<U256> = runtime::get_named_arg(ALLOCATIONS);
 
     let cliff_timestamp : u64 = runtime::get_named_arg(CLIFF_TIMESTAMP);
-    let cliff_amount : U256 = runtime::get_named_arg(CLIFF_AMOUNT);
 
     let owner : AccountHash = runtime::get_caller().into();
 
     let release_date : u64 = start_date.add(cliff_timestamp);
     let end_date: u64 = start_date.add(release_date);
+
+    let now : u64 = runtime::get_blocktime().into();
 
     runtime::put_key(CONTRACT_NAME, storage::new_uref(contract_name).into());
     runtime::put_key(CEP18_CONTRACT_HASH, storage::new_uref(cep18_contract_hash).into());
@@ -143,14 +135,26 @@ pub extern "C" fn init() {
     runtime::put_key(DURATION, storage::new_uref(duration).into());
     runtime::put_key(OWNER, storage::new_uref(owner).into());
     runtime::put_key(VESTING_AMOUNT, storage::new_uref(vesting_amount).into());
-    runtime::put_key(RECIPIENTS, storage::new_uref(recipients).into());
-    runtime::put_key(ALLOCATIONS, storage::new_uref(allocations).into());
     runtime::put_key(CLIFF_TIMESTAMP, storage::new_uref(cliff_timestamp).into());
-    runtime::put_key(CLIFF_AMOUNT, storage::new_uref(cliff_amount).into());
     runtime::put_key(RELEASE_DATE, storage::new_uref(release_date).into());
     runtime::put_key(END_DATE, storage::new_uref(end_date).into());
 
-    storage::new_dictionary(CLAIMED).unwrap_or_default();
+    storage::new_dictionary(RECIPIENTS_DICT).unwrap_or_default();
+    storage::new_dictionary(ALLOCATIONS_DICT ).unwrap_or_default();
+    storage::new_dictionary(CLAIMED_DICT).unwrap_or_default();
+
+    let recipients_dict = *runtime::get_key(RECIPIENTS_DICT).unwrap().as_uref().unwrap();
+    let allocations_dict = *runtime::get_key(ALLOCATIONS_DICT).unwrap().as_uref().unwrap();
+    let claimed_dict = *runtime::get_key(CLAIMED_DICT).unwrap().as_uref().unwrap();
+
+    for (index, recipient) in recipients.into_iter().enumerate() {
+        storage::dictionary_put(recipients_dict, &index.to_string(), recipient);  
+    }
+
+    for (index, allocation) in allocations.into_iter().enumerate() {
+        storage::dictionary_put(allocations_dict, &index.to_string(), allocation);  
+        storage::dictionary_put(claimed_dict, &index.to_string(), 0);  
+    }
 
 }
 
@@ -168,7 +172,6 @@ let recipients : Vec<Key> = runtime::get_named_arg(RECIPIENTS);
 let allocations : Vec<U256> = runtime::get_named_arg(ALLOCATIONS);
 
 let cliff_timestamp : u64 = runtime::get_named_arg(CLIFF_TIMESTAMP);
-let cliff_amount : U256 = runtime::get_named_arg(CLIFF_AMOUNT);
 
  let init_entry_point = EntryPoint::new(
     ENTRY_POINT_INIT,
@@ -181,7 +184,6 @@ let cliff_amount : U256 = runtime::get_named_arg(CLIFF_AMOUNT);
         Parameter::new(RECIPIENTS, CLType::List(Box::new(CLType::Key))),
         Parameter::new(ALLOCATIONS, CLType::List(Box::new(CLType::U256))),
         Parameter::new(CLIFF_TIMESTAMP, CLType::U64),
-        Parameter::new(CLIFF_AMOUNT, CLType::U256),
     ],
     CLType::URef,
     EntryPointAccess::Public,
@@ -193,8 +195,6 @@ let claim_entry_point = EntryPoint::new(
     ENTRY_POINT_CLAIM,
     vec![
         Parameter::new(CEP18_CONTRACT_HASH, CLType::Key),
-        Parameter::new(RECIPIENT, CLType::Key),
-        Parameter::new(CLAIM_AMOUNT, CLType::U256),
         Parameter::new(INDEX, CLType::I32),
     ],
     CLType::Unit,
@@ -236,8 +236,7 @@ let mut named_keys = NamedKeys::new();
         DURATION => duration,
         RECIPIENTS => recipients,
         ALLOCATIONS => allocations,
-        CLIFF_TIMESTAMP => cliff_timestamp,
-        CLIFF_AMOUNT => cliff_amount
+        CLIFF_TIMESTAMP => cliff_timestamp
     },
     )
 }
