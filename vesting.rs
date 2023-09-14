@@ -59,6 +59,12 @@ const CLAIMED_DICT: &str = "claimed_dict";
 
 #[no_mangle]
 pub extern "C" fn claim() {
+    // let release :bool = utils::read_from(release());
+
+    // if !release {
+    //     runtime::revert(Error::ReleaseError); 
+    // }
+
     // arguements
     let cep18_contract_hash = runtime::get_named_arg::<Key>(CEP18_CONTRACT_HASH)
     .into_hash()
@@ -192,6 +198,10 @@ pub extern "C" fn release() {
     if owner.to_string() != caller.to_string() {
         runtime::revert(Error::UnsufficentBalance);
     }
+
+    let relased_result = true;
+
+    runtime::put_key(RELEASED, storage::new_uref(relased_result).into());
 }
 
 #[no_mangle]
@@ -287,3 +297,4 @@ let mut named_keys = NamedKeys::new();
     },
     )
 }
+
