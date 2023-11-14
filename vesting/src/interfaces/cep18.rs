@@ -1,10 +1,8 @@
 #![allow(dead_code)]
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
 use casper_contract::contract_api::runtime;
-use casper_types::{runtime_args, ContractHash, Key, RuntimeArgs, U256};
-use crate::enums::Address;
+use casper_types::{ runtime_args, ContractHash, Key, RuntimeArgs, U256 };
 
 pub struct CEP18 {
     pub contract_hash: ContractHash,
@@ -22,20 +20,20 @@ impl CEP18 {
             runtime_args! {
                 "recipient" => recipient,
                 "amount" => amount,
-            },
+            }
         )
     }
 
-    pub fn transfer_from(&self,sender : Key, recipient: Key, amount: U256) -> () {
-      runtime::call_contract::<()>(
-          self.contract_hash,
-          "transfer_from",
-          runtime_args! {
+    pub fn transfer_from(&self, sender: Key, recipient: Key, amount: U256) -> () {
+        runtime::call_contract::<()>(
+            self.contract_hash,
+            "transfer_from",
+            runtime_args! {
               "owner" => sender,
               "recipient" => recipient,
               "amount" => amount,
-          },
-      )
+          }
+        )
     }
 
     pub fn approve(&self, spender: Key, amount: U256) -> () {
@@ -45,7 +43,7 @@ impl CEP18 {
             runtime_args! {
                 "spender" => spender,
                 "amount" => amount,
-            },
+            }
         )
     }
 }

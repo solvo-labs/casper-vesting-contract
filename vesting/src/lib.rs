@@ -2,10 +2,9 @@
 #![no_main]
 extern crate alloc;
 
-
 mod error;
 mod utils;
 mod interfaces;
-mod marketplace;
+mod vesting;
 mod enums;
 mod events;
