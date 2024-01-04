@@ -139,6 +139,7 @@ pub extern "C" fn claim() {
 
 #[no_mangle]
 pub extern "C" fn init() {
+    check_admin_account();
     let contract_name: String = runtime::get_named_arg(CONTRACT_NAME);
     let vesting_amount: U256 = runtime::get_named_arg(VESTING_AMOUNT);
     let cep18_contract_hash = runtime
@@ -208,6 +209,14 @@ pub extern "C" fn release() {
     let relased_result = true;
 
     runtime::put_key(RELEASED, storage::new_uref(relased_result).into());
+}
+
+pub fn check_admin_account() {
+    let admin: AccountHash = utils::get_key(OWNER);
+    let caller = runtime::get_caller();
+    if admin != caller {
+        runtime::revert(Error::AdminError);
+    }
 }
 
 #[no_mangle]
